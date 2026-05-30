@@ -1,6 +1,7 @@
 import os
 from groq import Groq
 from dotenv import load_dotenv
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 load_dotenv()
 
@@ -32,43 +33,56 @@ Write the paragraph now:
 """
 
 
-def generate_story(chapters: list) -> list:
-    """Generate a narrative paragraph for each chapter."""
-    story = []
+def narrate_chapter(chapter: dict) -> dict:
+    """Generate a narrative for a single chapter."""
+    prompt = build_prompt(chapter)
 
-    for chapter in chapters:
-        print(f"Narrating {chapter['month']}...")
-        prompt = build_prompt(chapter)
+    response = client.chat.completions.create(
+        model="meta-llama/llama-4-scout-17b-16e-instruct",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.7,
+    )
 
-        response = client.chat.completions.create(
-            model="meta-llama/llama-4-scout-17b-16e-instruct",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.7,
-        )
+    narrative = response.choices[0].message.content.strip()
+    print(f"✓ {chapter['month']}")
 
-        narrative = response.choices[0].message.content.strip()
-        story.append({
-            "month": chapter["month"],
-            "total_commits": chapter["total_commits"],
-            "top_authors": chapter["top_authors"],
-            "narrative": narrative,
-        })
+    return {
+        "month": chapter["month"],
+        "total_commits": chapter["total_commits"],
+        "top_authors": chapter["top_authors"],
+        "narrative": narrative,
+    }
 
-    return story
 
+def generate_story(chapters: list, max_workers: int = 5) -> list:
+    """Generate narratives for all chapters in parallel."""
+    results = {}
+
+    print(f"Narrating {len(chapters)} chapters with {max_workers} parallel workers...")
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(narrate_chapter, chapter): chapter["month"] for chapter in chapters}
+
+        for future in as_completed(futures):
+            month = futures[future]
+            try:
+                result = future.result()
+                results[month] = result
+            except Exception as e:
+                print(f"✗ {month} failed: {e}")
+
+    # Return sorted by month
+    return [results[month] for month in sorted(results.keys())]
 
 if __name__ == "__main__":
-    from git_extractor import clone_repo, extract_commits, cleanup_repo
+    from git_extractor import extract_commits
     from aggregator import group_by_month
 
-    path = "tmp/json-server"  # already cloned before, but re-clone if needed
-    commits = extract_commits(path)
+    commits = extract_commits("tmp/WACVR")
     chapters = group_by_month(commits)
+    print(f"Total chapters: {len(chapters)}")
 
-    # Test with first 2 months only to save API calls
-    story = generate_story(chapters[:2])
+    story = generate_story(chapters)
     for chapter in story:
         print(f"\n## {chapter['month']}")
         print(chapter["narrative"])
-
-        
