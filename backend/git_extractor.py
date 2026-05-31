@@ -5,6 +5,12 @@ from stat import S_IWRITE
 from git import Repo
 
 
+def force_remove(func, path, _):
+    """Handle read-only files on Windows during deletion."""
+    os.chmod(path, S_IWRITE)
+    func(path)
+
+
 def clone_repo(github_url: str) -> str:
     """Clone a GitHub repo and return the local path."""
     tmp_dir = "tmp"
@@ -14,7 +20,7 @@ def clone_repo(github_url: str) -> str:
     repo_path = os.path.join(tmp_dir, repo_name)
 
     if os.path.exists(repo_path):
-        shutil.rmtree(repo_path)
+        shutil.rmtree(repo_path, onerror=force_remove)  # ← fixed
 
     print(f"Cloning {github_url}...")
     Repo.clone_from(github_url, repo_path)
@@ -52,7 +58,6 @@ def extract_commits(repo_path: str) -> list:
                 "deletions": 0,
             }
         elif line.strip() and current_commit:
-            # numstat lines look like: "5\t3\tfilename.js"
             parts = line.split("\t")
             if len(parts) >= 2:
                 try:
@@ -72,20 +77,6 @@ def extract_commits(repo_path: str) -> list:
 
 def cleanup_repo(repo_path: str):
     """Delete the cloned repo from tmp/."""
-    def force_remove(func, path, _):
-        os.chmod(path, S_IWRITE)
-        func(path)
-
     if os.path.exists(repo_path):
-        shutil.rmtree(repo_path, onexc=force_remove)
+        shutil.rmtree(repo_path, onerror=force_remove)
         print(f"Cleaned up {repo_path}")
-
-
-
-if __name__ == "__main__":
-    import time
-    path = clone_repo("https://github.com/xiaopeng12138/WACVR.git")
-    start = time.time()
-    commits = extract_commits(path)
-    print(f"Extracted {len(commits)} commits in {time.time() - start:.2f}s")
-    print(commits[0])

@@ -1,4 +1,5 @@
 import os
+import time
 from groq import Groq
 from dotenv import load_dotenv
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -34,27 +35,36 @@ Write the paragraph now:
 
 
 def narrate_chapter(chapter: dict) -> dict:
-    """Generate a narrative for a single chapter."""
+    """Generate a narrative for a single chapter with retry on rate limit."""
     prompt = build_prompt(chapter)
 
-    response = client.chat.completions.create(
-        model="meta-llama/llama-4-scout-17b-16e-instruct",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.7,
-    )
+    max_retries = 5
+    for attempt in range(max_retries):
+        try:
+            response = client.chat.completions.create(
+                model="meta-llama/llama-4-scout-17b-16e-instruct",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.7,
+            )
+            narrative = response.choices[0].message.content.strip()
+            print(f"✓ {chapter['month']}")
+            return {
+                "month": chapter["month"],
+                "total_commits": chapter["total_commits"],
+                "top_authors": chapter["top_authors"],
+                "narrative": narrative,
+            }
 
-    narrative = response.choices[0].message.content.strip()
-    print(f"✓ {chapter['month']}")
-
-    return {
-        "month": chapter["month"],
-        "total_commits": chapter["total_commits"],
-        "top_authors": chapter["top_authors"],
-        "narrative": narrative,
-    }
+        except Exception as e:
+            if "429" in str(e) and attempt < max_retries - 1:
+                wait = 2 ** attempt  # 1s, 2s, 4s, 8s, 16s
+                print(f"⏳ Rate limited on {chapter['month']}, retrying in {wait}s...")
+                time.sleep(wait)
+            else:
+                raise
 
 
-def generate_story(chapters: list, max_workers: int = 5) -> list:
+def generate_story(chapters: list, max_workers: int = 3) -> list:
     """Generate narratives for all chapters in parallel."""
     results = {}
 
@@ -71,18 +81,4 @@ def generate_story(chapters: list, max_workers: int = 5) -> list:
             except Exception as e:
                 print(f"✗ {month} failed: {e}")
 
-    # Return sorted by month
-    return [results[month] for month in sorted(results.keys())]
-
-if __name__ == "__main__":
-    from git_extractor import extract_commits
-    from aggregator import group_by_month
-
-    commits = extract_commits("tmp/WACVR")
-    chapters = group_by_month(commits)
-    print(f"Total chapters: {len(chapters)}")
-
-    story = generate_story(chapters)
-    for chapter in story:
-        print(f"\n## {chapter['month']}")
-        print(chapter["narrative"])
+    return [results[month] for month in sorted(results.keys()) if month in results]
