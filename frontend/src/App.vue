@@ -19,6 +19,11 @@
 
     <p v-if="error" class="error">{{ error }}</p>
 
+    <div v-if="loading" class="loader">
+      <div class="spinner"></div>
+      <p>{{ loadingMessage }}</p>
+    </div>
+
     <div v-if="story" class="story">
       <div class="story-header">
         <h2>{{ story.repo }}</h2>
@@ -55,31 +60,53 @@ const githubUrl = ref("");
 const loading = ref(false);
 const error = ref("");
 const story = ref(null);
+const loadingMessage = ref('')  // ← add this
+
+const loadingMessages = [
+  'Cloning repository...',
+  'Extracting commits...',
+  'Grouping into chapters...',
+  'Generating narrative...',
+  'Almost there...',
+]
+
+let messageInterval = null  // ← add this
+
 
 async function generateStory() {
-  if (!githubUrl.value.trim()) return;
+  if (!githubUrl.value.trim()) return
 
-  loading.value = true;
-  error.value = "";
+  loading.value = true
+  error.value = ''
+  story.value = null
+  loadingMessage.value = loadingMessages[0]
+
+  // Cycle through messages every 4 seconds
+  let i = 0
+  messageInterval = setInterval(() => {
+    i = (i + 1) % loadingMessages.length
+    loadingMessage.value = loadingMessages[i]
+  }, 4000)
 
   try {
-    const response = await fetch("http://localhost:8000/story", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ github_url: githubUrl.value }),
-    });
+    const response = await fetch('http://localhost:8000/story', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ github_url: githubUrl.value })
+    })
 
-    const data = await response.json();
+    const data = await response.json()
+    if (!response.ok) throw new Error(data.detail)
+    story.value = data
 
-    if (!response.ok) throw new Error(data.detail);
-
-    story.value = data;
   } catch (err) {
-    error.value = err.message;
+    error.value = err.message
   } finally {
-    loading.value = false;
+    loading.value = false
+    clearInterval(messageInterval)
   }
 }
+
 </script>
 
 <style scoped>
@@ -146,9 +173,6 @@ button:disabled {
   font-size: 0.9rem;
 }
 
-
-
-
 .story-header {
   margin: 2rem 0 1.5rem;
   padding-bottom: 1rem;
@@ -205,5 +229,29 @@ button:disabled {
   background: #1a1a1a;
   border-radius: 20px;
   color: #888;
+}
+
+
+
+.loader {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  padding: 3rem 0;
+  color: #888;
+}
+
+.spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid #222;
+  border-top-color: #e0e0e0;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 </style>

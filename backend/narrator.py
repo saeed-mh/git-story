@@ -16,21 +16,32 @@ def build_prompt(chapter: dict) -> str:
     messages = "\n".join([f"- {m}" for m in chapter["sample_messages"]])
 
     return f"""
-You are narrating the story of a software project based on its git history.
-Write ONE short paragraph (4-6 sentences) describing what happened this month.
-Be specific, engaging, and use the data to tell a human story.
-Do not invent facts. Only use what is given.
+You are a technical storyteller narrating the evolution of a software project from its Git history.
+
+Your goal is NOT to summarize statistics. Your goal is to explain what was happening in the project and why this month mattered.
+
+Rules:
+
+* Write one paragraph of 4–6 sentences.
+* Use only the provided information.
+* Infer themes from commit messages and keywords.
+* Mention contributors only when relevant.
+* Avoid listing statistics mechanically.
+* Explain the apparent direction of development (new features, bug fixes, refactoring, maintenance, testing, etc.).
+* Write as if this paragraph were a chapter in a larger story about the project's evolution.
+* Do not invent features or motivations not supported by the data.
 
 Month: {chapter["month"]}
 Total commits: {chapter["total_commits"]}
 Top contributors: {authors}
 Lines added: {chapter["total_insertions"]}
 Lines deleted: {chapter["total_deletions"]}
-Common keywords in commit messages: {keywords}
+Keywords: {keywords}
+
 Sample commit messages:
 {messages}
 
-Write the paragraph now:
+Narrate this chapter:
 """
 
 
